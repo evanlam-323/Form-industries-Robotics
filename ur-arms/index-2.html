@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UR3e Program Builder V2</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+  
+  <style>
+    /* Utility classes for the new 3-column PolyScope layout */
+    .col-left { width: 400px; display: flex; flex-direction: column; flex-shrink: 0; gap: 16px; }
+    .col-center { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 16px; }
+    .col-right { width: 220px; display: flex; flex-direction: column; flex-shrink: 0; gap: 16px; }
+    
+    .btn-estop {
+      background: var(--rd);
+      color: white;
+      font-weight: bold;
+      font-size: 16px;
+      border: none;
+      padding: 0 24px;
+      height: 100%;
+      border-radius: var(--r);
+      cursor: pointer;
+    }
+    .btn-estop:hover { background: #dc2626; }
+    /* Joint jog tab active state */
+    #jog-tab-cart.active-jog-tab, #jog-tab-joint.active-jog-tab {
+      background: var(--ac) !important;
+      color: #000 !important;
+    }
+  </style>
+  <script>
+    // Jog mode tab switcher — runs inline so it's available before modules load
+    window._jogTab = function(mode) {
+      const cart  = document.getElementById('jog-panel-cart');
+      const joint = document.getElementById('jog-panel-joint');
+      const tCart  = document.getElementById('jog-tab-cart');
+      const tJoint = document.getElementById('jog-tab-joint');
+      if (mode === 'cart') {
+        cart.style.display  = 'flex';
+        joint.style.display = 'none';
+        tCart.style.background  = 'var(--ac)'; tCart.style.color  = '#000';
+        tJoint.style.background = '';           tJoint.style.color = '';
+      } else {
+        cart.style.display  = 'none';
+        joint.style.display = 'flex';
+        tJoint.style.background = 'var(--ac)'; tJoint.style.color = '#000';
+        tCart.style.background  = '';           tCart.style.color  = '';
+      }
+    };
+  </script>
+
+</head>
+<body>
+
+<header class="hdr" style="display: flex; align-items: center; justify-content: space-between; height: 52px; min-width: 900px; padding: 0 16px;">
+  
+  <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+    <div class="brand-title">UR3e Web Pendant</div>
+    <div class="brand-sub">Robotiq 2F-85</div>
+  </div>
+  
+  <div class="tab-bar" style="display: flex; height: 100%; border: none; background: transparent; flex-shrink: 0;">
+    <div class="tab on" data-target="tab-positions" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
+      Positions
+    </div>
+    <div class="tab" data-target="tab-program" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
+      Program
+    </div>
+    <div class="tab" data-target="tab-run" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
+      Run
+    </div>
+    <div class="tab" data-target="tab-ai" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold; color: var(--ac);">
+      ✨ AI
+    </div>
+  </div>
+
+  <div class="robot-bar" style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 1; height: 36px;">
+    <div class="robot-dot" id="robot-dot"></div>
+    <input class="robot-ip" id="robot-ip" type="text" value="169.254.190.160" placeholder="Robot IP" style="width: 130px;">
+    <button class="btn btn-sm" id="ping-btn">Ping</button>
+    <div class="hsep" style="height: 24px; margin: 0 4px; border-left: 1px solid var(--bd);"></div>
+    <span style="font:600 10px/1 var(--mono);color:var(--tx3);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;">Relay IP</span>
+    <input class="robot-ip" id="relay-ip" type="text" placeholder="169.254.x.x" style="width: 120px;">
+    <div class="hsep" style="height: 24px; margin: 0 4px; border-left: 1px solid var(--bd);"></div>
+    <button class="btn-estop" id="global-estop">E-STOP</button>
+  </div>
+</header>
+
+<div class="main-content" style="display: flex; flex: 1; height: calc(100vh - 52px); overflow: hidden;">
+
+  <div id="tab-positions" class="tab-pane on" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
+    
+    <div class="card col-left">
+      <div class="card-hdr"><span class="card-title">Saved Positions</span></div>
+      <div class="card-body" id="positions-list" style="padding: 8px; overflow-y: auto; flex: 1;">
+        </div>
+    </div>
+
+    <div class="card col-center" style="display: flex; flex-direction: column;">
+      <div class="card-hdr">
+        <span class="card-title">Live Robot Viewer</span>
+        <span id="telemetry-status" style="color: var(--rd); font-size: 11px;">Disconnected</span>
+      </div>
+      <div id="robot-3d-view" style="flex: 1; background: var(--bg); border-bottom: 1px solid var(--bd); min-height: 320px; position: relative; overflow: hidden;"></div>
+      <!-- Live Telemetry Panel -->
+      <div style="padding: 12px; background: var(--sf2); border-radius: 0 0 var(--r) var(--r); font-family: var(--mono); font-size: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; gap: 12px; align-items: center; border-bottom: 1px solid var(--bd); padding-bottom: 8px;">
+          <span style="color: var(--ac); font-weight: bold; width: 32px;">TCP:</span>
+          <div style="display: flex; gap: 10px; flex: 1; flex-wrap: wrap;">
+            <div><span style="color: var(--tx3)">X:</span> <span id="live-x">0.0000</span></div>
+            <div><span style="color: var(--tx3)">Y:</span> <span id="live-y">0.0000</span></div>
+            <div><span style="color: var(--tx3)">Z:</span> <span id="live-z">0.0000</span></div>
+            <div><span style="color: var(--tx3)">Rx:</span> <span id="live-rx">0.0000</span></div>
+            <div><span style="color: var(--tx3)">Ry:</span> <span id="live-ry">0.0000</span></div>
+            <div><span style="color: var(--tx3)">Rz:</span> <span id="live-rz">0.0000</span></div>
+          </div>
+          <button class="btn btn-sm" id="btn-refresh-telemetry" style="font-size: 9px; padding: 2px 6px;">↻ Refresh</button>
+          <label style="display: flex; align-items: center; gap: 4px; color: var(--tx2); cursor: pointer; font-size: 10px;">
+            <input type="checkbox" id="live-monitoring-chk" style="accent-color: var(--ac);">
+            Live Monitoring
+          </label>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <span style="color: var(--ac); font-weight: bold; width: 32px;">JNT:</span>
+          <div style="display: flex; gap: 10px; flex: 1; flex-wrap: wrap;" id="jnt-display">
+            <div><span style="color: var(--tx3)">B:</span> <span id="live-j0">0.00</span>°</div>
+            <div><span style="color: var(--tx3)">S:</span> <span id="live-j1">0.00</span>°</div>
+            <div><span style="color: var(--tx3)">E:</span> <span id="live-j2">0.00</span>°</div>
+            <div><span style="color: var(--tx3)">W1:</span> <span id="live-j3">0.00</span>°</div>
+            <div><span style="color: var(--tx3)">W2:</span> <span id="live-j4">0.00</span>°</div>
+            <div><span style="color: var(--tx3)">W3:</span> <span id="live-j5">0.00</span>°</div>
+          </div>
+          <div style="display: none; gap: 8px; align-items: center;" id="jnt-editor">
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 16px;">B</label>
+              <input type="number" id="edit-j0" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 16px;">S</label>
+              <input type="number" id="edit-j1" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 16px;">E</label>
+              <input type="number" id="edit-j2" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 22px;">W1</label>
+              <input type="number" id="edit-j3" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 22px;">W2</label>
+              <input type="number" id="edit-j4" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <label style="font-size: 9px; color: var(--tx3); font-weight: bold; width: 22px;">W3</label>
+              <input type="number" id="edit-j5" step="0.01" oninput="window._setup.updateEditPreview()" style="width:45px; padding:4px; font-size:9px; background:var(--sf); border:1px solid var(--bd); border-radius:3px; color:var(--tx);">
+            </div>
+          </div>
+          <button class="btn btn-sm" id="btn-edit-joints" onclick="window._setup.enterEditMode()" style="font-size: 9px; padding: 2px 6px;">Edit</button>
+          <button class="btn btn-sm" id="btn-finish-edit" onclick="window._setup.finishEditMode()" style="font-size: 9px; padding: 2px 6px; display: none;">Finish</button>
+          <button class="btn btn-sm btn-ac" id="btn-apply-joints"
+            style="font-size: 9px; padding: 2px 6px; display: none;"
+            onmousedown="window._setup.startApplyJoints()"
+            onmouseup="window._setup.stopApplyJoints()"
+            onmouseleave="window._setup.stopApplyJoints()">Apply</button>
+          <div style="display: inline-flex; align-items: center; gap: 6px; font-size: 10px;">
+            <span style="color: var(--tx3); font-weight: bold;">Gripper:</span>
+            <span id="live-gripper-pos" style="color: var(--ac);">---</span>
+            <span id="live-gripper-obj" style="display: none; background: var(--gn); color: black; font-weight: bold; padding: 1px 4px; border-radius: 3px; font-size: 8px;">OBJ</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card col-right">
+      <div class="card-hdr"><span class="card-title">Robot Controls</span></div>
+      <div class="card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+        <button class="btn" id="btn-freedrive" style="padding: 12px;">Freedrive: OFF</button>
+        
+        <!-- Freedrive axis mask -->
+        <div id="fd-axes-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r);">
+          <div style="font-size: 9px; color: var(--tx3); text-align: center; text-transform: uppercase; font-weight: bold;">Axis Mask</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-0" data-axis="0" style="padding: 4px; font-size: 10px;">X</button>
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-1" data-axis="1" style="padding: 4px; font-size: 10px;">Y</button>
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-2" data-axis="2" style="padding: 4px; font-size: 10px;">Z</button>
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-3" data-axis="3" style="padding: 4px; font-size: 10px;">Rx</button>
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-4" data-axis="4" style="padding: 4px; font-size: 10px;">Ry</button>
+            <button class="btn btn-sm btn-ghost axis-btn on" id="fd-ax-5" data-axis="5" style="padding: 4px; font-size: 10px;">Rz</button>
+          </div>
+        </div>
+
+        <button class="btn" id="btn-get-current" style="padding: 12px;">Get Current Pose</button>
+        <button class="btn" id="btn-record-waypoint" style="padding: 12px;">Record Sequence</button>
+        
+        <!-- Jogging Controls -->
+        <div style="height: 1px; background: var(--bd); margin: 4px 0;"></div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <!-- Jog Mode Toggle -->
+          <div style="display: flex; gap: 0; border: 1px solid var(--bd); border-radius: var(--r); overflow: hidden; flex-shrink: 0;">
+            <button id="jog-tab-cart" class="btn btn-sm" onclick="window._jogTab('cart')" 
+              style="flex:1; border-radius:0; border:none; background:var(--ac); color:#000; font-size:9px; font-weight:bold; padding:4px;">Cartesian</button>
+            <button id="jog-tab-joint" class="btn btn-sm btn-ghost" onclick="window._jogTab('joint')" 
+              style="flex:1; border-radius:0; border:none; font-size:9px; font-weight:bold; padding:4px;">Joint</button>
+          </div>
+
+          <!-- Cartesian Jog Panel -->
+          <div id="jog-panel-cart" style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="font-size: 9px; color: var(--tx3); text-transform: uppercase; font-weight: bold; text-align: center;">Position (m)</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+              <button class="btn btn-sm jog-btn" data-axis="0" data-dir="1">X+</button>
+              <button class="btn btn-sm jog-btn" data-axis="1" data-dir="1">Y+</button>
+              <button class="btn btn-sm jog-btn" data-axis="2" data-dir="1">Z+</button>
+              <button class="btn btn-sm jog-btn" data-axis="0" data-dir="-1">X−</button>
+              <button class="btn btn-sm jog-btn" data-axis="1" data-dir="-1">Y−</button>
+              <button class="btn btn-sm jog-btn" data-axis="2" data-dir="-1">Z−</button>
+            </div>
+            <div style="font-size: 9px; color: var(--tx3); text-transform: uppercase; font-weight: bold; text-align: center; margin-top: 2px;">Orientation (rad)</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+              <button class="btn btn-sm jog-btn" data-axis="3" data-dir="1">Rx+</button>
+              <button class="btn btn-sm jog-btn" data-axis="4" data-dir="1">Ry+</button>
+              <button class="btn btn-sm jog-btn" data-axis="5" data-dir="1">Rz+</button>
+              <button class="btn btn-sm jog-btn" data-axis="3" data-dir="-1">Rx−</button>
+              <button class="btn btn-sm jog-btn" data-axis="4" data-dir="-1">Ry−</button>
+              <button class="btn btn-sm jog-btn" data-axis="5" data-dir="-1">Rz−</button>
+            </div>
+          </div>
+
+          <!-- Joint Jog Panel -->
+          <div id="jog-panel-joint" style="display: none; flex-direction: column; gap: 4px;">
+            <div style="font-size: 9px; color: var(--tx3); text-transform: uppercase; font-weight: bold; text-align: center;">Joints (rad/s)</div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px;">
+              <button class="btn btn-sm joint-jog-btn" data-joint="0" data-dir="1" style="font-size:10px;">J0 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="0" data-dir="-1" style="font-size:10px;">J0 −</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="1" data-dir="1" style="font-size:10px;">J1 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="1" data-dir="-1" style="font-size:10px;">J1 −</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="2" data-dir="1" style="font-size:10px;">J2 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="2" data-dir="-1" style="font-size:10px;">J2 −</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="3" data-dir="1" style="font-size:10px;">J3 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="3" data-dir="-1" style="font-size:10px;">J3 −</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="4" data-dir="1" style="font-size:10px;">J4 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="4" data-dir="-1" style="font-size:10px;">J4 −</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="5" data-dir="1" style="font-size:10px;">J5 +</button>
+              <button class="btn btn-sm joint-jog-btn" data-joint="5" data-dir="-1" style="font-size:10px;">J5 −</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gripper Controls -->
+        <div style="height: 1px; background: var(--bd); margin: 4px 0;"></div>
+        <button class="btn btn-ac" id="btn-gripper-activate" style="padding: 12px;">Activate Gripper</button>
+        <div id="gripper-actions-box" style="display: none; flex-direction: column; gap: 8px;">
+          <button class="btn" id="btn-open-gripper" style="padding: 12px; width: 100%;">Open Gripper</button>
+          <button class="btn" id="btn-close-gripper" style="padding: 12px; width: 100%;">Close Gripper</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+
+  <div id="tab-program" class="tab-pane" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
+    
+    <div class="card col-left">
+      <div class="card-hdr"><span class="card-title">Configure Element</span></div>
+      <div class="card-body" id="node-config-panel" style="padding: 12px; overflow-y: auto; flex: 1;">
+        <div style="color: var(--tx3); text-align: center; margin-top: 20px;">
+          Select a program element in the center sequence to edit its properties here.
+        </div>
+        </div>
+    </div>
+
+    <div class="card program-card col-center">
+      <div class="card-hdr"><span class="card-title">Program Sequence</span></div>
+      <div class="card-body steps-body" id="program-sequence" style="padding: 12px; overflow-y: auto; flex: 1;">
+        <div style="color: var(--tx3); text-align: center; margin-top: 40px;">
+          Drag and drop program elements here...
+        </div>
+      </div>
+    </div>
+
+    <div class="card col-right">
+      <div class="card-hdr"><span class="card-title">Add Elements</span></div>
+      <div class="card-body" id="block-palette" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
+        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase;">Motion</div>
+        <button class="btn">+ Move J</button>
+        <button class="btn">+ Move L</button>
+        
+        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase; margin-top: 8px;">Hardware</div>
+        <button class="btn">+ Gripper Action</button>
+        
+        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase; margin-top: 8px;">Logic</div>
+        <button class="btn">+ Sleep</button>
+        <button class="btn">+ Folder</button>
+      </div>
+    </div>
+
+  </div>
+
+
+  <div id="tab-run" class="tab-pane" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
+    
+    <div class="col-center" style="max-width: 800px; margin: 0 auto; width: 100%;">
+      
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Execution Controls</span></div>
+        <div class="card-body" style="padding: 24px; text-align: center; background: var(--sf2);">
+          <div style="display: flex; justify-content: center; gap: 16px;">
+            <button class="btn btn-send" id="dash-play" style="font-size: 20px; padding: 16px 32px;">▶︎ PLAY</button>
+            <button class="btn" id="dash-pause" style="font-size: 20px; padding: 16px 32px;">⏸ PAUSE</button>
+            <button class="btn" id="dash-stop" style="font-size: 20px; padding: 16px 32px; border-color: var(--rdlo); color: var(--rd);">■ STOP</button>
+            <button id="dash-sim-btn" class="btn">SIM: OFF</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 16px; flex: 1; min-height: 250px;">
+        <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+          <div class="card-hdr"><span class="card-title">Live Variables</span></div>
+          <div class="card-body" id="live-variables" style="padding: 12px; overflow-y: auto; flex: 1; font-family: var(--mono); font-size: 12px;">
+            </div>
+        </div>
+        
+        <div class="card" style="flex: 2; display: flex; flex-direction: column;">
+          <div class="card-hdr"><span class="card-title">System Log</span></div>
+          <div class="card-body" id="live-logs" style="padding: 12px; overflow-y: auto; flex: 1; font-family: var(--mono); font-size: 11px; background: #000; color: #aaa;">
+            System initialized. Waiting for robot output...
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card col-right">
+      <div class="card-hdr"><span class="card-title">Project Settings</span></div>
+      <div class="card-body" style="padding: 16px; display: flex; flex-direction: column; gap: 16px; flex: 1; overflow: hidden;">
+        
+        <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
+          <button class="btn btn-ac" id="btn-save-project" style="padding: 8px; font-size: 12px;">Save Project</button>
+          <label class="btn" style="cursor:pointer; text-align: center; padding: 8px; font-size: 12px;">
+            Load Project
+            <input type="file" accept=".json" id="file-import-project" style="display:none;">
+          </label>
+        </div>
+
+        <div style="height: 1px; background: var(--bd); flex-shrink: 0;"></div>
+
+        <div style="flex-shrink: 0;">
+          <label style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 500; font-size: 12px;">
+            <span>Speed Override:</span>
+            <span id="speed-label" style="color: var(--ac);">100%</span>
+          </label>
+          <input type="range" id="dash-speed-slider" min="0" max="100" value="100" style="width: 100%;">
+        </div>
+
+        <div style="height: 1px; background: var(--bd); flex-shrink: 0;"></div>
+
+        <!-- Robot Defaults Scroll Container -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 4px;">
+          <div style="font-size: 10px; color: var(--tx3); text-transform: uppercase; font-weight: bold;">Robot Defaults</div>
+          
+          <!-- Motion Section -->
+          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">Motion Parameters</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">JNT Speed (rad/s)</label>
+                <input class="step-inp" type="number" step="0.01" id="settings-js" value="1.05" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">JNT Accel (rad/s²)</label>
+                <input class="step-inp" type="number" step="0.01" id="settings-ja" value="1.4" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">LIN Speed (m/s)</label>
+                <input class="step-inp" type="number" step="0.01" id="settings-ls" value="0.25" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">LIN Accel (m/s²)</label>
+                <input class="step-inp" type="number" step="0.01" id="settings-la" value="1.2" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label style="font-size: 8px; color: var(--tx3);">Blend Radius (m)</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-br" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+            </div>
+          </div>
+
+          <!-- TCP Section -->
+          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">TCP Pose (m / rad)</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">X</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-x" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">Y</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-y" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">Z</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-z" value="0.165" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">Rx</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-rx" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">Ry</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-ry" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">Rz</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-tcp-rz" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Payload Section -->
+          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">Payload Settings</div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+              <div style="grid-column: 1 / -1;">
+                <label style="font-size: 8px; color: var(--tx3);">Weight (kg)</label>
+                <input class="step-inp" type="number" step="0.01" id="settings-pl-w" value="0.9" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">CoG X (m)</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-pl-x" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div>
+                <label style="font-size: 8px; color: var(--tx3);">CoG Y (m)</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-pl-y" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label style="font-size: 8px; color: var(--tx3);">CoG Z (m)</label>
+                <input class="step-inp" type="number" step="0.001" id="settings-pl-z" value="0.06" style="width: 100%; font-size: 10px; padding: 2px;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+
+  <div id="tab-ai" class="tab-pane" style="width: 100%; height: 100%; display: none; overflow: hidden;">
+    <!-- Populated by js/ai-assistant.js initAiAssistant() -->
+  </div>
+
+</div>
+
+<div id="ui-modal" style="display:none; position:fixed; top:30%; left:calc(50% - 225px); z-index:9999; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+  <div class="card" style="padding:24px; width:450px; text-align:center; border:2px solid var(--ac); background:var(--sf2);">
+    <div style="color:var(--ac); font-size:24px; font-weight:600; margin-bottom:16px;">ROBOT MESSAGE</div>
+    <div id="ui-modal-msg" style="font-size:16px; margin-bottom:24px;"></div>
+    <button class="btn btn-ac" id="btn-resolve-popup" style="width:100%; padding:12px; font-size:16px;">Continue</button>
+  </div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

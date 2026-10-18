@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UR3e Program Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="hdr">
+  <div>
+    <div class="brand-title">UR3e Program Builder</div>
+    <div class="brand-sub">Robotiq 2F-85 · Phase 2</div>
+  </div>
+  <div class="hsep"></div>
+  <div class="hspace"></div>
+
+  <div class="robot-bar">
+    <div class="robot-dot" id="robot-dot"></div>
+    <input class="robot-ip" id="robot-ip" type="text" value="169.254.190.160"
+      placeholder="Robot IP"
+      onkeydown="if(event.key==='Enter')pingRobot()">
+    <button class="btn btn-sm" id="ping-btn" onclick="pingRobot()">Ping</button>
+    <button class="btn btn-sm btn-send" id="send-btn" onclick="sendToRobot()" disabled>▶ Send to Robot</button>
+  </div>
+
+  <div class="hsep"></div>
+  <button class="btn btn-sm" onclick="copyCode()">Copy</button>
+  <button class="btn btn-sm btn-ac" onclick="downloadCode()">↓ Download</button>
+  <div class="hsep"></div>
+  <button class="btn btn-sm" style="background:var(--rd);color:white;font-weight:bold;padding:4px 16px;" onclick="emergencyStop()">E-STOP</button>
+  <button class="btn btn-sm" style="background:var(--bd2);color:white;" onclick="powerdownRobot()">Power Off</button>
+</header>
+
+<div class="page">
+<div class="app">
+
+  <!-- ── LEFT COLUMN ──────────────────────────────────────── -->
+  <div class="left-col">
+
+    <!-- Robot Control -->
+    <div class="card" style="margin-bottom:12px;flex-shrink:0;">
+      <div class="card-hdr" style="background:var(--sf2);">
+        <span class="card-title" style="color:var(--ac);">⬡ Robot Control</span>
+        <button class="btn btn-sm" id="btn-freedrive" onclick="toggleFreedrive()"
+          style="border-color:var(--bd2);color:var(--tx2);">Freedrive: OFF</button>
+      </div>
+
+      <!-- Freedrive axis mask -->
+      <div class="fd-mask-grid">
+        <button class="fd-ax-btn on" id="fd-ax-0" onclick="toggleFdAxis(0)">X</button>
+        <button class="fd-ax-btn on" id="fd-ax-1" onclick="toggleFdAxis(1)">Y</button>
+        <button class="fd-ax-btn on" id="fd-ax-2" onclick="toggleFdAxis(2)">Z</button>
+        <button class="fd-ax-btn on" id="fd-ax-3" onclick="toggleFdAxis(3)">Rx</button>
+        <button class="fd-ax-btn on" id="fd-ax-4" onclick="toggleFdAxis(4)">Ry</button>
+        <button class="fd-ax-btn on" id="fd-ax-5" onclick="toggleFdAxis(5)">Rz</button>
+      </div>
+
+      <!-- Live telemetry -->
+      <div style="padding:10px;background:var(--bg);border-bottom:1px solid var(--bd);font-family:var(--mono);font-size:10px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="color:var(--tx3);font-weight:bold;width:24px;">TCP:</span>
+          <div><span style="color:var(--tx3)">X:</span> <span id="live-x">0.0000</span></div>
+          <div><span style="color:var(--tx3)">Y:</span> <span id="live-y">0.0000</span></div>
+          <div><span style="color:var(--tx3)">Z:</span> <span id="live-z">0.0000</span></div>
+          <div><span style="color:var(--tx3)">Rx:</span> <span id="live-rx">0.00</span></div>
+          <div><span style="color:var(--tx3)">Ry:</span> <span id="live-ry">0.00</span></div>
+          <div><span style="color:var(--tx3)">Rz:</span> <span id="live-rz">0.00</span></div>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm btn-ghost" onclick="fetchRobotState()"
+            style="margin-top:-12px;margin-bottom:-12px;">↻ Refresh</button>
+          <label style="display:flex;align-items:center;gap:4px;color:var(--tx2);cursor:pointer;font-size:10px;margin-top:-12px;margin-bottom:-12px;">
+            <input type="checkbox" onchange="toggleLiveMonitoring(this)" style="accent-color:var(--ac);">
+            Live Tracker
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="color:var(--tx3);font-weight:bold;width:24px;">JNT:</span>
+          <div><span style="color:var(--tx3)">B:</span>  <span id="live-j0">0.00</span></div>
+          <div><span style="color:var(--tx3)">S:</span>  <span id="live-j1">0.00</span></div>
+          <div><span style="color:var(--tx3)">E:</span>  <span id="live-j2">0.00</span></div>
+          <div><span style="color:var(--tx3)">W1:</span> <span id="live-j3">0.00</span></div>
+          <div><span style="color:var(--tx3)">W2:</span> <span id="live-j4">0.00</span></div>
+          <div><span style="color:var(--tx3)">W3:</span> <span id="live-j5">0.00</span></div>
+          <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 16px;">
+            <span style="font-size: 10px; color: var(--tx3); text-transform: uppercase; font-weight: 600;">Gripper:</span>
+            <span id="live-gripper-pos" style="font-family: var(--mono); color: var(--ac); font-size: 10px;">---</span>
+            <span id="live-gripper-obj" style="font-family: var(--mono); color: var(--ac); font-size: 10px;">OBJ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jog controls -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;">
+          <div style="grid-column:1/-1;font-size:10px;color:var(--tx3);margin-bottom:4px;">TCP POSITION</div>
+          <button class="btn btn-sm" onmousedown="startJog(0, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">X+</button>
+          <button class="btn btn-sm" onmousedown="startJog(1, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">Y+</button>
+          <button class="btn btn-sm" onmousedown="startJog(2, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">Z+</button>
+          <button class="btn btn-sm" onmousedown="startJog(0, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">X-</button>
+          <button class="btn btn-sm" onmousedown="startJog(1, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">Y-</button>
+          <button class="btn btn-sm" onmousedown="startJog(2, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">Z-</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;">
+          <div style="grid-column:1/-1;font-size:10px;color:var(--tx3);margin-bottom:4px;">TCP ORIENTATION</div>
+          <button class="btn btn-sm" onmousedown="startJog(3, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">Rx+</button>
+          <button class="btn btn-sm" onmousedown="startJog(4, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">Ry+</button>
+          <button class="btn btn-sm" onmousedown="startJog(5, 1)"  onmouseup="stopJog()" onmouseleave="stopJog()">Rz+</button>
+          <button class="btn btn-sm" onmousedown="startJog(3, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">Rx-</button>
+          <button class="btn btn-sm" onmousedown="startJog(4, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">Ry-</button>
+          <button class="btn btn-sm" onmousedown="startJog(5, -1)" onmouseup="stopJog()" onmouseleave="stopJog()">Rz-</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Positions -->
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Positions</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-ac" id="btn-gripper-activate" onclick="activateGripper()">Activate Gripper</button>
+          <button class="btn" id="btn-gripper-open" onclick="moveGripper('open')" style="display: none;">Open</button>
+          <button class="btn" id="btn-gripper-close" onclick="moveGripper('closed')" style="display: none;">Close</button>
+        </div>
+        <button class="btn btn-sm btn-ac" onclick="recordLivePosition()">Record Live</button>
+        <div class="hsep" style="height:16px;"></div>
+        <button class="btn btn-sm" onclick="addPos()">+ Add</button>
+      </div>
+      <div class="pos-list" id="pos-list"></div>
+    </div>
+
+  </div>
+
+  <!-- ── RIGHT COLUMN ─────────────────────────────────────── -->
+  <div class="right-col">
+
+    <!-- Settings -->
+    <div class="card settings-card">
+      <div class="card-hdr">
+        <span class="card-title">Settings</span>
+        <button class="btn btn-sm" id="cfg-tog" onclick="toggleCfg()">▼ collapse</button>
+      </div>
+      <div id="cfg-body" class="cfg-body">
+        <div class="tab-bar">
+          <div class="tab on" onclick="showTab('motion')">Motion</div>
+          <div class="tab" onclick="showTab('gripper')">Gripper</div>
+          <div class="tab" onclick="showTab('tcp')">TCP</div>
+          <div class="tab" onclick="showTab('payload')">Payload</div>
+        </div>
+        <div id="tab-motion" class="tab-pane on">
+          <div class="sg-grid">
+            <div class="sg"><label>Joint speed (rad/s)</label><input type="number" step="0.01" id="js" value="1.05" oninput="refreshCode()"></div>
+            <div class="sg"><label>Joint accel (rad/s²)</label><input type="number" step="0.01" id="ja" value="1.4"  oninput="refreshCode()"></div>
+            <div class="sg"><label>Linear speed (m/s)</label><input type="number" step="0.01" id="ls" value="0.25"  oninput="refreshCode()"></div>
+            <div class="sg"><label>Linear accel (m/s²)</label><input type="number" step="0.01" id="la" value="1.2"  oninput="refreshCode()"></div>
+            <div class="sg"><label>Blend radius (m)</label><input type="number" step="0.001" id="br" value="0.0"  oninput="refreshCode()"></div>
+          </div>
+        </div>
+        <div id="tab-gripper" class="tab-pane">
+          <div class="sg-grid">
+            <div class="sg"><label>Open position (mm)</label><input type="number" step="1" id="go" value="20" oninput="refreshCode()"></div>
+            <div class="sg"><label>Close position (mm)</label><input type="number" step="1" id="gc" value="70" oninput="refreshCode()"></div>
+            <div class="sg"><label>Speed (0–100)</label><input type="number" step="1" min="0" max="100" id="gs" value="100" oninput="refreshCode()"></div>
+            <div class="sg"><label>Force (0–100)</label><input type="number" step="1" min="0" max="100" id="gf" value="100" oninput="refreshCode()"></div>
+          </div>
+        </div>
+        <div id="tab-tcp" class="tab-pane">
+          <div class="sg-grid">
+            <div class="sg"><label>X (m)</label><input type="number" step="0.001" id="tcp-x"  value="0"     oninput="refreshCode()"></div>
+            <div class="sg"><label>Y (m)</label><input type="number" step="0.001" id="tcp-y"  value="0"     oninput="refreshCode()"></div>
+            <div class="sg"><label>Z (m)</label><input type="number" step="0.001" id="tcp-z"  value="0.174" oninput="refreshCode()"></div>
+            <div class="sg"><label>RX (rad)</label><input type="number" step="0.001" id="tcp-rx" value="0"  oninput="refreshCode()"></div>
+            <div class="sg"><label>RY (rad)</label><input type="number" step="0.001" id="tcp-ry" value="0"  oninput="refreshCode()"></div>
+            <div class="sg"><label>RZ (rad)</label><input type="number" step="0.001" id="tcp-rz" value="0"  oninput="refreshCode()"></div>
+          </div>
+        </div>
+        <div id="tab-payload" class="tab-pane">
+          <div class="sg-grid">
+            <div class="sg"><label>Weight (kg)</label><input type="number" step="0.1" id="pl-w" value="0.9" oninput="refreshCode()"></div>
+            <div class="sg"><label>CoG X (m)</label><input type="number" step="0.001" id="pl-x" value="0"  oninput="refreshCode()"></div>
+            <div class="sg"><label>CoG Y (m)</label><input type="number" step="0.001" id="pl-y" value="0"  oninput="refreshCode()"></div>
+            <div class="sg"><label>CoG Z (m)</label><input type="number" step="0.001" id="pl-z" value="0.06"  oninput="refreshCode()"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Program -->
+    <div class="card program-card">
+      <div class="card-hdr">
+        <span class="card-title">Program</span>
+        <span style="font-size:10px;color:var(--tx3)" id="step-count"></span>
+      </div>
+      <div class="warn-box" id="warn-box"></div>
+      <div class="steps-body" id="steps-list"></div>
+      <div class="add-bar">
+        <select id="new-type">
+          <optgroup label="Motion">
+            <option value="movej">movej — Joint move</option>
+            <option value="movel">movel — Linear move</option>
+            <option value="movec">movec — Circular arc</option>
+            <option value="guarded_move">Until Contact move</option> </optgroup>
+          </optgroup>
+          <optgroup label="Gripper">
+            <option value="activate_gripper">Activate gripper</option>
+            <option value="open_gripper">Open gripper</option>
+            <option value="close_gripper">Close gripper</option>
+          </optgroup>
+          <optgroup label="Logic & Flow">
+            <option value="loop_start">Loop</option>
+            <option value="if_start">If / Elseif</option>
+            <option value="else_if">Else If Block</option>
+            <option value="else">Else</option>
+            <option value="wait_cond">Wait (Condition)</option>
+            <option value="sleep">Wait (Time)</option>
+            <option value="halt">Halt Program</option>
+            <option value="thread_start">Parallel Thread</option>
+            <option value="end">End Block</option>
+          </optgroup>
+          <optgroup label="Variables & Utils">
+            <option value="read_gripper">Read Gripper Pos</option>
+            <option value="assign">Assignment</option>
+            <option value="timer">Timer</option>
+            <option value="textmsg">Log message</option>
+            <option value="popup">Popup (Pendant)</option>
+            <option value="comment">Comment</option>
+            <option value="folder">Folder</option>
+            <option value="set_digital_out">Set digital output</option>
+            <option value="set_payload">Set payload</option>
+            <option value="set_tcp">Set TCP</option>
+            <option value="set_gravity">Set gravity vector</option>
+            <option value="zero_ftsensor">Zero F/T sensor</option>
+            <option value="set_baselight">Set base light</option>
+          </optgroup>
+        </select>
+        <button class="btn btn-ac" onclick="addStep()">+ Add step</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── CODE OUTPUT ───────────────────────────────────────── -->
+<div class="code-wrap">
+  <div class="card">
+    <div class="card-hdr" style="background:#0a0a0c;">
+      <span class="card-title" style="color:var(--ac);">Generated URScript</span>
+      <span style="font-size:10px;color:var(--tx3);" id="code-lines"></span>
+      <button class="btn btn-sm" onclick="exportProject()">Save Project</button>
+      <label class="btn btn-sm" style="cursor:pointer;">
+        Load Project
+        <input type="file" accept=".json" onchange="importProject(this)" style="display:none;">
+      </label>
+      <div class="hsep"></div>
+      <button class="btn btn-sm" onclick="copyCode()">Copy</button>
+      <button class="btn btn-sm btn-ac" onclick="downloadCode()">↓ Download</button>
+    </div>
+    <div class="code-block" id="code-out"></div>
+  </div>
+</div>
+</div>
+
+<div id="ui-modal" style="display:none; position:fixed; top:30%; left:calc(50% - 225px); z-index:9999; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+  <div class="card" style="padding:24px; width:450px; text-align:center; border:2px solid var(--ac); background:var(--sf2);">
+    <div style="color:var(--ac); font-size:24px; font-weight:600; margin-bottom:12px;">
+      ⚠️ Robot Attention Required
+    </div>
+    <div id="ui-modal-msg" style="margin-bottom:20px; font-size:14px; color:var(--tx);">
+      </div>
+    <button class="btn btn-ac" style="width:100%; justify-content:center; font-size:18x; padding:10px;" onclick="resolvePopup()">
+      Continue
+    </button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
