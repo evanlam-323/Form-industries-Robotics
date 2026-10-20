@@ -7,7 +7,6 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   
   <style>
     /* Utility classes for the new 3-column PolyScope layout */
@@ -68,14 +67,8 @@
     <div class="tab on" data-target="tab-positions" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
       Positions
     </div>
-    <div class="tab" data-target="tab-program" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
-      Program
-    </div>
-    <div class="tab" data-target="tab-run" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold;">
-      Run
-    </div>
-    <div class="tab" data-target="tab-ai" style="display: flex; align-items: center; justify-content: center; width: 110px; font-size: 13px; font-weight: bold; color: var(--ac);">
-      ✨ AI
+    <div class="tab" data-target="tab-follower" style="display: flex; align-items: center; justify-content: center; width: 130px; font-size: 13px; font-weight: bold;">
+      UR3e → UR10e
     </div>
   </div>
 
@@ -196,6 +189,22 @@
         </div>
 
         <button class="btn" id="btn-get-current" style="padding: 12px;">Get Current Pose</button>
+
+        <!-- Encoder-checked homing -->
+        <div id="home-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--sf); border: 1px solid var(--bd); border-radius: var(--r);">
+          <div style="font-size: 9px; color: var(--tx3); text-align: center; text-transform: uppercase; font-weight: bold;">Home</div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn" id="btn-go-home" style="flex: 1; padding: 10px;">Go Home</button>
+            <button class="btn btn-ghost" id="btn-stop-home" style="padding: 10px; color: var(--rd);">Stop</button>
+          </div>
+          <button class="btn" id="btn-jog-ready" title="Bend the arm into a pose with room to jog in every direction (base and wrist 3 stay put)" style="padding: 10px;">Jog-Ready Pose</button>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--tx3);">
+            <span>Home speed</span><span id="home-speed-label" style="color: var(--ac);">25%</span>
+          </div>
+          <input type="range" id="home-speed-slider" min="1" max="100" value="25" style="width: 100%;">
+          <label style="font-size: 10px; color: var(--tx3); display: flex; gap: 6px; align-items: center;"><input type="checkbox" id="home-unwind-chk" checked> Unwind wrist 3 fully to HOME</label>
+          <div id="home-status" style="font-size: 10px; color: var(--tx3); min-height: 14px;"></div>
+        </div>
         <button class="btn" id="btn-record-waypoint" style="padding: 12px;">Record Sequence</button>
         
         <!-- Jogging Controls -->
@@ -229,6 +238,7 @@
               <button class="btn btn-sm jog-btn" data-axis="4" data-dir="-1">Ry−</button>
               <button class="btn btn-sm jog-btn" data-axis="5" data-dir="-1">Rz−</button>
             </div>
+            <div id="jog-status" style="display: none; font-size: 10px; line-height: 1.35; padding: 6px; border: 1px solid var(--bd); border-radius: var(--r); background: var(--sf);"></div>
           </div>
 
           <!-- Joint Jog Panel -->
@@ -264,196 +274,97 @@
   </div>
 
 
-  <div id="tab-program" class="tab-pane" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
-    
-    <div class="card col-left">
-      <div class="card-hdr"><span class="card-title">Configure Element</span></div>
-      <div class="card-body" id="node-config-panel" style="padding: 12px; overflow-y: auto; flex: 1;">
-        <div style="color: var(--tx3); text-align: center; margin-top: 20px;">
-          Select a program element in the center sequence to edit its properties here.
-        </div>
-        </div>
-    </div>
+  <div id="tab-follower" class="tab-pane" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
+    <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
 
-    <div class="card program-card col-center">
-      <div class="card-hdr"><span class="card-title">Program Sequence</span></div>
-      <div class="card-body steps-body" id="program-sequence" style="padding: 12px; overflow-y: auto; flex: 1;">
-        <div style="color: var(--tx3); text-align: center; margin-top: 40px;">
-          Drag and drop program elements here...
-        </div>
-      </div>
-    </div>
-
-    <div class="card col-right">
-      <div class="card-hdr"><span class="card-title">Add Elements</span></div>
-      <div class="card-body" id="block-palette" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto;">
-        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase;">Motion</div>
-        <button class="btn">+ Move J</button>
-        <button class="btn">+ Move L</button>
-        
-        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase; margin-top: 8px;">Hardware</div>
-        <button class="btn">+ Gripper Action</button>
-        
-        <div style="color: var(--tx3); font-size: 11px; text-transform: uppercase; margin-top: 8px;">Logic</div>
-        <button class="btn">+ Sleep</button>
-        <button class="btn">+ Folder</button>
-      </div>
-    </div>
-
-  </div>
-
-
-  <div id="tab-run" class="tab-pane" style="width: 100%; height: 100%; display: flex; padding: 16px; gap: 16px;">
-    
-    <div class="col-center" style="max-width: 800px; margin: 0 auto; width: 100%;">
-      
-      <div class="card">
-        <div class="card-hdr"><span class="card-title">Execution Controls</span></div>
-        <div class="card-body" style="padding: 24px; text-align: center; background: var(--sf2);">
-          <div style="display: flex; justify-content: center; gap: 16px;">
-            <button class="btn btn-send" id="dash-play" style="font-size: 20px; padding: 16px 32px;">▶︎ PLAY</button>
-            <button class="btn" id="dash-pause" style="font-size: 20px; padding: 16px 32px;">⏸ PAUSE</button>
-            <button class="btn" id="dash-stop" style="font-size: 20px; padding: 16px 32px; border-color: var(--rdlo); color: var(--rd);">■ STOP</button>
-            <button id="dash-sim-btn" class="btn">SIM: OFF</button>
-          </div>
-        </div>
-      </div>
-
-      <div style="display: flex; gap: 16px; flex: 1; min-height: 250px;">
-        <div class="card" style="flex: 1; display: flex; flex-direction: column;">
-          <div class="card-hdr"><span class="card-title">Live Variables</span></div>
-          <div class="card-body" id="live-variables" style="padding: 12px; overflow-y: auto; flex: 1; font-family: var(--mono); font-size: 12px;">
-            </div>
-        </div>
-        
-        <div class="card" style="flex: 2; display: flex; flex-direction: column;">
-          <div class="card-hdr"><span class="card-title">System Log</span></div>
-          <div class="card-body" id="live-logs" style="padding: 12px; overflow-y: auto; flex: 1; font-family: var(--mono); font-size: 11px; background: #000; color: #aaa;">
-            System initialized. Waiting for robot output...
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <div class="card col-right">
-      <div class="card-hdr"><span class="card-title">Project Settings</span></div>
-      <div class="card-body" style="padding: 16px; display: flex; flex-direction: column; gap: 16px; flex: 1; overflow: hidden;">
-        
-        <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
-          <button class="btn btn-ac" id="btn-save-project" style="padding: 8px; font-size: 12px;">Save Project</button>
-          <label class="btn" style="cursor:pointer; text-align: center; padding: 8px; font-size: 12px;">
-            Load Project
-            <input type="file" accept=".json" id="file-import-project" style="display:none;">
+      <div class="card" style="flex-shrink: 0;">
+        <div class="card-hdr"><span class="card-title">Leader (UR3e)</span></div>
+        <div class="card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 11px; color: var(--tx3); display: flex; gap: 6px; align-items: center;">Source
+            <select id="fl-source" style="flex: 1; background: var(--sf2); color: var(--tx); border: 1px solid var(--bd2); border-radius: 4px; padding: 3px;">
+              <option value="live">Live UR3e (or SIM joints)</option>
+              <option value="virtual">Virtual sliders</option>
+            </select>
           </label>
+          <button class="btn" id="btn-fl-freedrive" style="padding: 10px;">Freedrive: OFF</button>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-sm" id="btn-fl-open" style="flex: 1;">Open gripper</button>
+            <button class="btn btn-sm" id="btn-fl-close" style="flex: 1;">Close gripper</button>
+          </div>
+          <div id="virtual-sliders" style="display: none; flex-direction: column; gap: 4px;"></div>
         </div>
+      </div>
 
-        <div style="height: 1px; background: var(--bd); flex-shrink: 0;"></div>
-
-        <div style="flex-shrink: 0;">
-          <label style="display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 500; font-size: 12px;">
-            <span>Speed Override:</span>
-            <span id="speed-label" style="color: var(--ac);">100%</span>
-          </label>
-          <input type="range" id="dash-speed-slider" min="0" max="100" value="100" style="width: 100%;">
+      <div class="card" style="flex-shrink: 0;">
+        <div class="card-hdr"><span class="card-title">Follower (UR10e, sim only)</span></div>
+        <div class="card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <label style="font-size: 11px; color: var(--tx3); display: flex; gap: 6px; align-items: center;"><input type="checkbox" id="fl-mirror" checked> Mirror leader joints live</label>
+          <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--tx3);"><span>UR10e speed limit</span><span id="fl-speed-lbl" style="color: var(--ac);">100%</span></div>
+          <input type="range" id="fl-speed" min="5" max="100" value="100" style="width: 100%;">
+          <button class="btn btn-sm" id="btn-box-reset">Reset part + trail</button>
         </div>
+      </div>
 
-        <div style="height: 1px; background: var(--bd); flex-shrink: 0;"></div>
+      <div class="card" style="flex-shrink: 0;">
+        <div class="card-hdr"><span class="card-title">Pick &amp; Place</span><span id="pp-ready" style="font-size: 10px; color: var(--tx3);"></span></div>
+        <div class="card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
 
-        <!-- Robot Defaults Scroll Container -->
-        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 4px;">
-          <div style="font-size: 10px; color: var(--tx3); text-transform: uppercase; font-weight: bold;">Robot Defaults</div>
-          
-          <!-- Motion Section -->
-          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">Motion Parameters</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">JNT Speed (rad/s)</label>
-                <input class="step-inp" type="number" step="0.01" id="settings-js" value="1.05" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">JNT Accel (rad/s²)</label>
-                <input class="step-inp" type="number" step="0.01" id="settings-ja" value="1.4" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">LIN Speed (m/s)</label>
-                <input class="step-inp" type="number" step="0.01" id="settings-ls" value="0.25" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">LIN Accel (m/s²)</label>
-                <input class="step-inp" type="number" step="0.01" id="settings-la" value="1.2" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div style="grid-column: 1 / -1;">
-                <label style="font-size: 8px; color: var(--tx3);">Blend Radius (m)</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-br" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
+          <!-- 1. How to teach it -->
+          <div style="display: flex; gap: 0; border: 1px solid var(--bd2); border-radius: var(--r); overflow: hidden;">
+            <button class="btn btn-sm" data-pmode="waypoints" style="flex: 1; border: none; border-radius: 0;">Waypoints</button>
+            <button class="btn btn-sm" data-pmode="path" style="flex: 1; border: none; border-radius: 0;">Record path</button>
+          </div>
+
+          <div id="pp-wp-panel" style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 10px; color: var(--tx3);">Freedrive the UR3e to each pose and capture it. The gripper opens/closes at Pick and Place automatically.</div>
+            <div id="pp-slots" style="display: flex; flex-direction: column; gap: 6px;"></div>
+            <button class="btn btn-sm btn-ghost" id="btn-pp-clear" style="align-self: flex-start;">Clear poses</button>
+          </div>
+
+          <div id="pp-rec-panel" style="display: none; flex-direction: column; gap: 6px;">
+            <div style="font-size: 10px; color: var(--tx3);">Turn Freedrive on, press Record, then do the whole pick &amp; place by hand, gripper included. Press Stop when done.</div>
+            <button class="btn" id="btn-rec" style="padding: 10px;">● Record</button>
+            <div id="rec-info" style="font-size: 10px; color: var(--tx3);"></div>
+          </div>
+
+          <!-- 2. Play it -->
+          <div style="border-top: 1px solid var(--bd); padding-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-sm" id="btn-pp-sim" style="flex: 1;">Preview on UR10e</button>
+              <button class="btn btn-sm btn-ac" id="btn-pp-real" style="flex: 1;">Run on UR3e</button>
+              <button class="btn btn-sm" id="btn-pp-stop" style="color: var(--rd);">Stop</button>
             </div>
           </div>
 
-          <!-- TCP Section -->
-          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">TCP Pose (m / rad)</div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">X</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-x" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">Y</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-y" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">Z</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-z" value="0.165" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">Rx</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-rx" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">Ry</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-ry" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">Rz</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-tcp-rz" value="0.0" style="width: 100%; font-size: 10px; padding: 2px; text-align: center;">
-              </div>
+          <!-- 3. Save it -->
+          <div style="border-top: 1px solid var(--bd); padding-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; gap: 6px;">
+              <input id="lib-name" type="text" placeholder="Name this program" style="flex: 1; min-width: 0; background: var(--sf2); color: var(--tx); border: 1px solid var(--bd2); border-radius: 4px; padding: 4px 6px; font-size: 11px;">
+              <button class="btn btn-sm" id="btn-lib-save">Save</button>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <select id="lib-select" style="flex: 1; min-width: 0; background: var(--sf2); color: var(--tx); border: 1px solid var(--bd2); border-radius: 4px; padding: 4px 6px; font-size: 11px;"></select>
+              <button class="btn btn-sm btn-ghost" id="btn-lib-del" title="Delete selected" style="color: var(--rd);">Delete</button>
+            </div>
+            <div style="display: flex; gap: 12px; font-size: 10px;">
+              <a href="#" id="btn-export" style="color: var(--tx2);" onclick="return false;">Export to file</a>
+              <label style="color: var(--tx2); cursor: pointer; text-decoration: underline;">Import file<input type="file" id="lib-import" accept=".json,application/json" style="display: none;"></label>
             </div>
           </div>
 
-          <!-- Payload Section -->
-          <div style="background: var(--sf); padding: 8px; border: 1px solid var(--bd); border-radius: var(--r); display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 9px; font-weight: bold; color: var(--ac); text-transform: uppercase;">Payload Settings</div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-              <div style="grid-column: 1 / -1;">
-                <label style="font-size: 8px; color: var(--tx3);">Weight (kg)</label>
-                <input class="step-inp" type="number" step="0.01" id="settings-pl-w" value="0.9" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">CoG X (m)</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-pl-x" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div>
-                <label style="font-size: 8px; color: var(--tx3);">CoG Y (m)</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-pl-y" value="0.0" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-              <div style="grid-column: 1 / -1;">
-                <label style="font-size: 8px; color: var(--tx3);">CoG Z (m)</label>
-                <input class="step-inp" type="number" step="0.001" id="settings-pl-z" value="0.06" style="width: 100%; font-size: 10px; padding: 2px;">
-              </div>
-            </div>
-          </div>
+          <div id="pp-status" style="font-size: 10px; min-height: 14px; color: var(--tx3);"></div>
         </div>
-
       </div>
     </div>
 
-  </div>
-
-
-  <div id="tab-ai" class="tab-pane" style="width: 100%; height: 100%; display: none; overflow: hidden;">
-    <!-- Populated by js/ai-assistant.js initAiAssistant() -->
+    <div class="card" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+      <div class="card-hdr"><span class="card-title">Sim: UR3e leader → UR10e follower</span></div>
+      <div style="flex: 1; position: relative; min-height: 0;">
+        <div id="follower-viewer" style="position: absolute; inset: 0;"></div>
+        <div id="follower-warn" style="position: absolute; top: 8px; left: 8px; right: 8px; font-size: 11px; color: #fbbf24; pointer-events: none;"></div>
+        <div id="follower-readout" style="position: absolute; bottom: 8px; right: 8px; width: 270px; padding: 8px; background: #000a; border: 1px solid var(--bd); border-radius: 6px; font: 11px var(--mono); color: var(--tx);"></div>
+      </div>
+    </div>
   </div>
 
 </div>

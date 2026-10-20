@@ -2,7 +2,7 @@
 // TAB-SETUP — Positions list, Robot Controls, Live viewer
 // ═══════════════════════════════════════════════════════════
 import { positions, setPositions, steps, setSteps, latestJoints, latestTcp, uid, isFreedrive, setIsFreedrive, fdAxes, setIsGripperOpen } from './state.js';
-import { sendDirect, resetFreedriveUI, fetchRobotState } from './network.js';
+import { sendDirect, resetFreedriveUI, fetchRobotState, RELAY } from './network.js';
 import { renderSteps, refreshCode } from './tab-program.js';
 
 export const JOINT_LABELS = ['J0','J1','J2','J3','J4','J5'];
@@ -104,6 +104,7 @@ export function deletePos(pid) {
 export function startMoveHere(pid) {
   const pos = positions.find(p => p.id === pid);
   if (!pos) return;
+  if (pos.name === 'HOME') { window._homeHold = true; import('./homing.js').then(h => h.goHome()); return; }
 
   import('./state.js').then(s => {
     if (s.isSimulationMode) {
@@ -139,15 +140,19 @@ export function startMoveHere(pid) {
     }
 
     // ── REAL MODE ──
-    if (!pos.c) return;
-    const cartStr = pos.c.map(v => v.toFixed(4)).join(',');
-    const urscript = `def move_here():\n  movej(p[${cartStr}], a=1.2, v=0.25)\nend\n`;
+    const hasJ = pos.j && pos.j.length === 6 && !pos.j.every(v => v === 0);
+    if (!hasJ && !pos.c) return;
+    const target = hasJ
+      ? `[${pos.j.map(v => v.toFixed(4)).join(',')}]`
+      : `p[${pos.c.map(v => v.toFixed(4)).join(',')}]`;
+    const urscript = `def move_here():\n  movej(${target}, a=1.2, v=0.25)\nend\n`;
     resetFreedriveUI();
     sendDirect(urscript);
   });
 }
 
 export function stopMoveHere() {
+  if (window._homeHold) { window._homeHold = false; import('./homing.js').then(h => h.stopHome()); return; }
   import('./state.js').then(s => {
     if (s.isSimulationMode) {
       window._simMoveRaf = false; // Cancel the RAF loop
@@ -273,17 +278,72 @@ export function activateGripper() {
 }
 
 // Gripper actions
-export function openGripper() {
-  import('./gripper3d.js').then(gr => gr.animateGripper(0));   // 0 rad = open
-  setIsGripperOpen(true);
-  sendDirect(`def grp():\n  socket_close("rq_srv")\n  socket_open("127.0.0.1", 63352, "rq_srv")\n  socket_send_string("SET SPE 255", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_send_string("SET FOR 255", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_send_string("SET POS 0", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_close("rq_srv")\nend\ngrp()`);
+// Gripper. pos: 0 = open … 255 = closed.
+// First choice: the relay talks to the Robotiq URCap directly (port 63352). No URScript
+// program is sent, so Freedrive (or anything else running) keeps going untouched.
+// Fallback (relay can't reach the gripper): send a URScript program. In Freedrive that
+// program re-enters freedrive_mode() afterwards so the arm stays hand-guidable.
+function gripLines(pos) {
+  const send = c => `  socket_send_string("${c}", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n`;
+  return '  socket_close("rq_srv")\n  socket_open("127.0.0.1", 63352, "rq_srv")\n' +
+    send('SET ACT 1') + send(`SET POS ${pos}`) + send('SET SPE 255') + send('SET FOR 255') + send('SET GTO 1') +
+    '  socket_close("rq_srv")\n';
 }
 
-export function closeGripper() {
-  import('./gripper3d.js').then(gr => gr.animateGripper(0.8)); // 0.8 rad = closed
-  setIsGripperOpen(false);
-  sendDirect(`def grp():\n  socket_close("rq_srv")\n  socket_open("127.0.0.1", 63352, "rq_srv")\n  socket_send_string("SET SPE 255", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_send_string("SET FOR 255", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_send_string("SET POS 255", "rq_srv")\n  socket_send_byte(10, "rq_srv")\n  sync()\n  socket_close("rq_srv")\nend\ngrp()`);
+function gripScriptFallback(pos) {
+  if (isFreedrive) {
+    sendDirect(`def fd_grip():\n${gripLines(pos)}  freedrive_mode([${fdAxes.join(',')}], p[0,0,0,0,0,0])\n  while True:\n    sync()\n  end\nend\n`);
+  } else {
+    sendDirect(`def grp():\n${gripLines(pos)}end\n`);
+  }
 }
+
+// Show what the gripper did (follower tab status line + browser console)
+function gripMsg(text, color) {
+  console.log('[Gripper]', text);
+  const el = document.getElementById('pp-status');
+  if (el) { el.textContent = text; el.style.color = color; }
+}
+
+export async function setGripper(pos) {
+  pos = Math.max(0, Math.min(255, Math.round(pos)));
+  const word = pos < 128 ? 'Open' : 'Close';
+  import('./gripper3d.js').then(gr => gr.animateGripper(0.8 * pos / 255));
+  setIsGripperOpen(pos < 128);
+  const s = await import('./state.js');
+  if (s.isSimulationMode) return;
+  const ip = document.getElementById('robot-ip')?.value.trim();
+  if (!ip) { gripMsg('Gripper: enter the robot IP first.', 'var(--rd)'); return; }
+  gripMsg(`Gripper: ${word}…`, 'var(--tx2)');
+  let d;
+  try {
+    const r = await fetch(RELAY, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip, action: 'gripper_move', pos, speed: 255, force: 255 }),
+    });
+    d = await r.json();
+  } catch (e) {
+    gripMsg('Gripper: cannot reach relay.py — is it running?', 'var(--rd)');
+    return;
+  }
+  if (d.v !== 2) {
+    // Old relay still running: it can't drive the gripper directly
+    gripMsg('Gripper: relay.py is out of date — stop it and start it again. Trying fallback…', 'var(--rd)');
+    gripScriptFallback(pos);
+    return;
+  }
+  if (!d.ok) {
+    gripMsg(`Gripper error: ${d.error}. Trying fallback…`, 'var(--rd)');
+    gripScriptFallback(pos);
+    return;
+  }
+  const moved = Math.abs(d.after - d.before) > 3 || Math.abs(d.after - pos) < 15;
+  if (moved) gripMsg(`Gripper: ${word} ✓ (position ${d.before} → ${d.after})`, 'var(--gn)');
+  else gripMsg(`Gripper accepted ${word} but did not move (position ${d.after}, fault ${d.fault}). Check the relay window.`, 'var(--rd)');
+}
+
+export function openGripper()  { setGripper(0); }
+export function closeGripper() { setGripper(255); }
 
 export function hoverPos(pid, show) {
   const pos = positions.find(p => p.id === pid);

@@ -1,6 +1,6 @@
 # relay.py — UR3e Relay Server
 # Run with: python3 relay.py
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 import socket, json, struct, time, threading, os, urllib.request, urllib.error
 
 ROBOT_PORT   = 30002   # URScript injection
@@ -372,6 +372,49 @@ def gripper_write_packet(action_byte, position, speed, force):
     mbap = struct.pack('>HHH', 1, 0, 1 + len(pdu)) + bytes([9])
     return mbap + pdu
 
+# ── Gripper (Robotiq URCap ASCII server, port 63352) ───────────────────
+# One connection at a time: the status poller and button presses share this lock.
+gripper_lock = threading.Lock()
+
+def _rq(s, cmd):
+    s.sendall((cmd + "\n").encode())
+    return s.recv(64).decode('utf-8', 'ignore').strip()
+
+def _rq_num(reply):
+    import re
+    nums = re.findall(r'\d+', reply)
+    return int(nums[-1]) if nums else -1
+
+def gripper_command(ip, pos, spe=255, frc=255):
+    """Move the gripper without touching the robot program (Freedrive keeps running).
+    Activates the gripper first if needed. Returns a dict describing what happened."""
+    log = []
+    with gripper_lock, socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(2.0)
+        s.connect((ip, GRIPPER_PORT))
+        sta = _rq_num(_rq(s, "GET STA")); log.append(f"STA={sta}")
+        if sta != 3:                                   # 3 = activation complete
+            log.append("ACT " + _rq(s, "SET ACT 1"))
+            t0 = time.time()
+            while time.time() - t0 < 5.0:
+                time.sleep(0.2)
+                sta = _rq_num(_rq(s, "GET STA"))
+                if sta == 3: break
+            log.append(f"STA after activate={sta}")
+            if sta != 3:
+                raise RuntimeError("gripper did not activate (" + ", ".join(log) + ")")
+        before = _rq_num(_rq(s, "GET POS"))
+        for cmd in (f"SET POS {pos}", f"SET SPE {spe}", f"SET FOR {frc}", "SET GTO 1"):
+            r = _rq(s, cmd)
+            log.append(f"{cmd} -> {r}")
+            if 'ack' not in r.lower():
+                raise RuntimeError(f"gripper replied {r!r} to {cmd} (" + ", ".join(log) + ")")
+        time.sleep(0.6)
+        after = _rq_num(_rq(s, "GET POS"))
+        flt = _rq_num(_rq(s, "GET FLT"))
+    print(f"🤏 [Gripper] target={pos} pos {before}->{after} fault={flt} | " + " | ".join(log))
+    return {"ok": True, "v": 2, "target": pos, "before": before, "after": after, "fault": flt, "log": log}
+
 # ── HTTP Handler ───────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -480,18 +523,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 resp = json.dumps({"ok": False, "error": str(e)}).encode()
 
-        # ── Gripper Move ───────────────────────────────────────────────
+        # ── Gripper Move (ASCII protocol, straight to the Robotiq URCap) ─
+        # Talks to the gripper directly, so no URScript program is sent and
+        # whatever is running on the robot (e.g. Freedrive) is NOT interrupted.
         elif action == 'gripper_move':
-            pos = data.get('pos', 255)
             try:
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(2.0)
-                    s.connect((ip, GRIPPER_PORT))
-                    s.sendall(gripper_write_packet(0x09, pos, 255, 150))
-                    recv_exact(s, 12)
-                resp = b'{"ok":true}'
+                pos = max(0, min(255, int(data.get('pos', 255))))
+                spe = max(0, min(255, int(data.get('speed', 255))))
+                frc = max(0, min(255, int(data.get('force', 255))))
+                resp = json.dumps(gripper_command(ip, pos, spe, frc)).encode()
             except Exception as e:
-                resp = json.dumps({"ok": False, "error": str(e)}).encode()
+                print(f"🤏 [Gripper] FAILED: {e}")
+                resp = json.dumps({"ok": False, "v": 2, "error": str(e)}).encode()
 
         # ── Gripper status (ASCII Protocol) ────────────────────────────
         elif action == 'gripper_status':
@@ -501,7 +544,7 @@ class Handler(BaseHTTPRequestHandler):
                     nums = re.findall(r'\d+', text)
                     return int(nums[-1]) if nums else 0
 
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                with gripper_lock, socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(2.0)
                     s.connect((ip, 63352))
                     
@@ -831,4 +874,6 @@ if __name__ == '__main__':
     threading.Thread(target=dashboard_monitor, daemon=True).start()
     threading.Thread(target=popup_server, daemon=True).start()
     threading.Thread(target=log_server, daemon=True).start()
-    HTTPServer(('', 5678), Handler).serve_forever()
+    # Threaded: the UI polls several endpoints constantly; a single-threaded server
+    # made button presses (gripper, stop) wait in line behind those polls.
+    ThreadingHTTPServer(('', 5678), Handler).serve_forever()

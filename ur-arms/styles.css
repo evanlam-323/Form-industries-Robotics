@@ -192,6 +192,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font:
 #tab-positions.tab-pane.on,
 #tab-program.tab-pane.on,
 #tab-run.tab-pane.on,
+#tab-follower.tab-pane.on,
 #tab-ai.tab-pane.on {
   display: flex !important;   /* Arranges your left, center, and right columns side-by-side */
   flex: 1;                    /* Fills the remaining screen space perfectly without crushing the menu */

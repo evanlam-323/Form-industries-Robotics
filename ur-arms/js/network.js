@@ -70,6 +70,7 @@ export function sendDirect(codeStr) {
 
 export function emergencyStop() {
   console.error('EMERGENCY STOP TRIGGERED');
+  window._homingAbort = true;
   sendDirect('protective_stop()\n');
   resetFreedriveUI();
 }
@@ -250,6 +251,7 @@ export function startGripperTelemetry() {
       if (data.ok) {
         let raw = data.position_raw;
         if (raw !== undefined) {
+          window._gripperRaw = raw;
           if (raw < 3) raw = 3;
           if (raw > 230) raw = 230;
           let pct = Math.round(((raw - 3) / (230 - 3)) * 100);
@@ -298,49 +300,9 @@ export function startGripperTelemetry() {
   setTimeout(poll, 1000);
 }
 
-export function startJog(axis, direction) {
-  setIsJogging(true);
-  resetFreedriveUI();
-
-  if (isSimulationMode) {
-    // ── SIM MODE: Nudge simTcp in the requested Cartesian axis ──
-    // Uses module-level simTcp (imported at top) for zero-overhead RAF loop
-    const LINEAR_SPEED  = 0.003;  // m per frame (~60fps)
-    const ANGULAR_SPEED = 0.015;  // rad per frame
-
-    function simCartJogLoop() {
-      if (!isJogging) return;
-      import('./state.js').then(s => {
-        const tcp = [...s.simTcp];
-        tcp[axis] += axis < 3 ? LINEAR_SPEED * direction : ANGULAR_SPEED * direction;
-        s.setSimTcp(tcp);
-        const ids = ['live-x','live-y','live-z','live-rx','live-ry','live-rz'];
-        ids.forEach((id, i) => {
-          const el = document.getElementById(id);
-          if (el) el.textContent = tcp[i].toFixed(4);
-        });
-      });
-      requestAnimationFrame(simCartJogLoop);
-    }
-    simCartJogLoop();
-    return;
-  }
-
-  // ── REAL MODE ──
-  let vector = [0, 0, 0, 0, 0, 0];
-  vector[axis] = direction * (axis < 3 ? 0.05 : 0.25);
-  const speedlCmd = `def jog():\n  while True:\n    speedl([${vector.join(',')}], a=0.3, t=0.1)\n  end\nend\n`;
-  sendDirect(speedlCmd);
-}
-
-export function stopJog() {
-  if (!isJogging) return;
-  setIsJogging(false);
-  // In sim mode sendDirect is already a no-op, but we still clear the flag
-  if (!isSimulationMode) {
-    sendDirect("def stop_jog():\n  stopl(2.5)\nend\n");
-  }
-}
+// Cartesian jog (startJog / stopJog / moveToJogReady) lives in jog.js —
+// it adds the singularity / reachability guard.
+export { startJog, stopJog, moveToJogReady } from './jog.js';
 
 export function startJogJoint(jointIdx, direction) {
   setIsJointJogging(true);
