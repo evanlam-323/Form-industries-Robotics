@@ -4,7 +4,8 @@
 import { steps, positions, isJogging, setIsJogging, isFreedrive, setIsFreedrive, fdAxes, isJointJogging, setIsJointJogging, isSimulationMode, simJoints, setSimJoints, globalSettings } from './state.js';
 import { updateViewer } from './viewer3d.js';
 
-export const RELAY = 'http://localhost:5678';
+// Relay runs on the same machine that serves this page (Mac or Pi).
+export const RELAY = `http://${location.hostname || 'localhost'}:5678`;
 
 export function setDot(state) {
   const dot = document.getElementById('robot-dot');

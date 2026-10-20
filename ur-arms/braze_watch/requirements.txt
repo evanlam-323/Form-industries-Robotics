@@ -1,0 +1,5 @@
+numpy
+opencv-python
+# optional, better image features (CPU is fine):
+# torch
+# torchvision
