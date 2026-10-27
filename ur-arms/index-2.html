@@ -26,6 +26,11 @@
       cursor: pointer;
     }
     .btn-estop:hover { background: #dc2626; }
+    /* Robot init lock: motion controls stay greyed out until the arm is RUNNING */
+    body.robot-locked .needs-init { opacity: .35; cursor: not-allowed !important; }
+    #init-pill { font: 600 10px/1 var(--mono); padding: 5px 8px; border: 1px solid var(--rd); border-radius: 999px; color: var(--rd); cursor: pointer; white-space: nowrap; letter-spacing: .05em; }
+    @keyframes initFlash { 0%,100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--rd); } }
+    .init-flash { animation: initFlash .5s ease 2; }
     /* Joint jog tab active state */
     #jog-tab-cart.active-jog-tab, #jog-tab-joint.active-jog-tab {
       background: var(--ac) !important;
@@ -76,6 +81,7 @@
     <div class="robot-dot" id="robot-dot"></div>
     <input class="robot-ip" id="robot-ip" type="text" value="169.254.190.160" placeholder="Robot IP" style="width: 130px;">
     <button class="btn btn-sm" id="ping-btn">Ping</button>
+    <span id="init-pill" title="Robot power state. Click to go to Initialize Robot.">● BOOT UP FIRST</span>
     <div class="hsep" style="height: 24px; margin: 0 4px; border-left: 1px solid var(--bd);"></div>
     <span style="font:600 10px/1 var(--mono);color:var(--tx3);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;">Relay IP</span>
     <input class="robot-ip" id="relay-ip" type="text" placeholder="169.254.x.x" style="width: 120px;">
@@ -173,6 +179,14 @@
     <div class="card col-right">
       <div class="card-hdr"><span class="card-title">Robot Controls</span></div>
       <div class="card-body" style="padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+        <!-- Robot power / init (remote version of the pendant's Initialize screen) -->
+        <div id="init-panel" style="display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--sf); border: 1px solid var(--rd); border-radius: var(--r);">
+          <div style="font-size: 9px; color: var(--tx3); text-align: center; text-transform: uppercase; font-weight: bold;">Robot Power</div>
+          <div style="font: 600 11px/1.2 var(--mono); text-align: center;" id="init-mode">No robot connection</div>
+          <button class="btn btn-ac" id="btn-init-robot" style="padding: 12px;" disabled>Initialize Robot</button>
+          <div id="init-msg" style="font-size: 10px; line-height: 1.35; color: var(--tx3); min-height: 14px;">Boot up first: press Initialize Robot before moving anything.</div>
+          <button class="btn btn-sm btn-ghost" id="btn-power-off" style="color: var(--rd);" disabled>Power Off</button>
+        </div>
         <button class="btn" id="btn-freedrive" style="padding: 12px;">Freedrive: OFF</button>
         
         <!-- Freedrive axis mask -->

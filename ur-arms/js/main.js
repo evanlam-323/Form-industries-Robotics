@@ -7,6 +7,7 @@ import { initViewer } from './viewer3d.js';
 import { renderPositions, exposeSetup, addPos, toggleFreedrive, openGripper, closeGripper, recordLivePosition } from './tab-setup.js';
 import { initHoming } from './homing.js';
 import { initFollowerTab } from './tab-follower.js';
+import { initRobotInit } from './robot-init.js';
 
 // ── TAB SWITCHING ──
 function initTabs() {
@@ -176,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initKeyboardShortcuts();
   initPositionsTab();
   initFollowerTab();
+  initRobotInit();   // after all panels are wired, so its guard sees every control
 
   // Initial render
   renderPositions();

@@ -221,8 +221,69 @@ robot_state = {
 
 robot_dashboard_state = {
     "prog": "",
-    "mode": ""
+    "mode": "",
+    "safety": ""
 }
+
+# Remote "Initialize Robot" (same as the pendant's Init screen: power on + brake release)
+init_state = {"busy": False, "step": "", "error": "", "log": []}
+init_lock = threading.Lock()
+
+def _dash_cmd(sock, cmd):
+    sock.sendall((cmd + "\n").encode())
+    return sock.recv(1024).decode('utf-8', errors='ignore').strip()
+
+def _wait_mode(sock, wanted, timeout):
+    """Poll robotmode until it contains one of `wanted` (tuple). Returns the last reply."""
+    end = time.time() + timeout
+    reply = ""
+    while time.time() < end:
+        reply = _dash_cmd(sock, "robotmode")
+        if any(w in reply for w in wanted):
+            return reply
+        time.sleep(0.5)
+    raise TimeoutError(f"timed out waiting for {'/'.join(wanted)} (last: {reply})")
+
+def run_robot_init(ip):
+    """power on -> wait IDLE -> brake release -> wait RUNNING. Runs in its own thread."""
+    def step(msg):
+        init_state["step"] = msg
+        init_state["log"].append(msg)
+        print(f"🔌 [Init] {msg}")
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5.0)
+            s.connect((ip, 29999))
+            s.recv(1024)  # welcome banner
+
+            safety = _dash_cmd(s, "safetystatus")
+            if "NORMAL" not in safety and "REDUCED" not in safety:
+                raise RuntimeError(f"Safety is not normal ({safety}). Release the E-stop / clear the stop on the pendant first.")
+
+            mode = _dash_cmd(s, "robotmode")
+            if "RUNNING" in mode:
+                step("Already running")
+                return
+
+            if "IDLE" not in mode:
+                step("Powering on…")
+                r = _dash_cmd(s, "power on")
+                if "Powering on" not in r:
+                    raise RuntimeError(f"Robot refused 'power on': {r}")
+                _wait_mode(s, ("IDLE", "RUNNING"), 60)
+
+            step("Releasing brakes…")
+            r = _dash_cmd(s, "brake release")
+            if "Brake releasing" not in r and "Brakes releasing" not in r:
+                raise RuntimeError(f"Robot refused 'brake release': {r}")
+            _wait_mode(s, ("RUNNING",), 30)
+            step("Robot running")
+    except Exception as e:
+        init_state["error"] = str(e)
+        init_state["step"] = "Failed"
+        print(f"🔌 [Init] FAILED: {e}")
+    finally:
+        init_state["busy"] = False
 
 # ── 🧵 Background Thread 1: Kinematics (Port 30003) ───────────────────
 def state_monitor():
@@ -331,6 +392,7 @@ def dashboard_monitor():
             # 3. Poll Safety Status (Protective & E-Stops)
             current_socket.sendall(b"safetystatus\n")
             raw_safety = current_socket.recv(1024).decode('utf-8', errors='ignore').strip()
+            robot_dashboard_state["safety"] = raw_safety
             
             # Trigger custom popups based on the native safety states, respecting cooldown
             if time.time() > ignore_popups_until:
@@ -349,6 +411,7 @@ def dashboard_monitor():
         except Exception as e:
             robot_dashboard_state["prog"] = ""
             robot_dashboard_state["mode"] = ""
+            robot_dashboard_state["safety"] = ""
             if current_socket:
                 try: current_socket.close()
                 except: pass
@@ -487,8 +550,35 @@ class Handler(BaseHTTPRequestHandler):
             resp = json.dumps({
                 "ok": True, 
                 "prog": robot_dashboard_state["prog"],
-                "mode": robot_dashboard_state["mode"]
+                "mode": robot_dashboard_state["mode"],
+                "safety": robot_dashboard_state["safety"],
+                "init": {k: init_state[k] for k in ("busy", "step", "error")}
             }).encode()
+
+        # ── Initialize Robot (power on + brake release, like the pendant) ─
+        elif action == 'dashboard_init':
+            with init_lock:
+                if not ip:
+                    resp = json.dumps({"ok": False, "error": "No robot IP"}).encode()
+                elif init_state["busy"]:
+                    resp = json.dumps({"ok": True, "already": True}).encode()
+                else:
+                    init_state.update(busy=True, step="Starting…", error="", log=[])
+                    threading.Thread(target=run_robot_init, args=(ip,), daemon=True).start()
+                    resp = b'{"ok":true}'
+
+        # ── Power Off (brakes engage) ──────────────────────────────────
+        elif action == 'dashboard_power_off':
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(2.0)
+                    s.connect((ip, 29999))
+                    s.recv(1024)
+                    s.sendall(b"power off\n")
+                    r = s.recv(1024).decode('utf-8', errors='ignore').strip()
+                resp = json.dumps({"ok": True, "reply": r}).encode()
+            except Exception as e:
+                resp = json.dumps({"ok": False, "error": str(e)}).encode()
 
         # ── Dashboard Server Execution Controls ────────────────────────
         elif action in ['dashboard_pause', 'dashboard_stop', 'dashboard_play']:
