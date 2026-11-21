@@ -1,0 +1,23 @@
+# systemd unit: this Pi reports its arm's live joint state to the arm-state relay.
+# Read-only; never commands a robot. One copy on EACH Pi. Install:
+#   sudo cp ~/ur-arms/two_pi/arm-state.service /etc/systemd/system/
+#   sudo install -m 600 /dev/null /etc/arm-state.env      # then put these three lines in it (sudo nano /etc/arm-state.env)
+#       ARM=ur-small=169.254.190.160          (on the UR10e's Pi:  ARM=ur-large=192.168.1.20)
+#       FACTORYFORM_URL=https://THE-RELAY-ADDRESS
+#       ROBOT_API_KEY=the relay's key
+#   sudo systemctl enable --now arm-state
+#   journalctl -u arm-state -f
+[Unit]
+Description=UR arm joint state to the arm-state relay (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=robot
+EnvironmentFile=/etc/arm-state.env
+ExecStart=/usr/bin/python3 /home/robot/ur-arms/two_pi/arm_state_pusher.py --arm ${ARM}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

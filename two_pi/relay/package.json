@@ -1,0 +1,13 @@
+{
+  "name": "arm-state-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Relay between the Raspberry Pis on the UR arms and FactoryForm. Read-only: cannot command a robot.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}
